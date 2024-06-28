@@ -78,22 +78,23 @@ struct MemoryEditor
     };
 
     // Settings
-    bool            Open;                                       // = true   // set to false when DrawWindow() was closed. ignore if not using DrawWindow().
-    bool            ReadOnly;                                   // = false  // disable any editing.
-    int             Cols;                                       // = 16     // number of columns to display.
-    bool            OptShowOptions;                             // = true   // display options button/context menu. when disabled, options will be locked unless you provide your own UI for them.
-    bool            OptShowDataPreview;                         // = false  // display a footer previewing the decimal/binary/hex/float representation of the currently selected bytes.
-    bool            OptShowHexII;                               // = false  // display values in HexII representation instead of regular hexadecimal: hide null/zero bytes, ascii values as ".X".
-    bool            OptShowAscii;                               // = true   // display ASCII representation on the right side.
-    bool            OptGreyOutZeroes;                           // = true   // display null/zero bytes using the TextDisabled color.
-    bool            OptUpperCaseHex;                            // = true   // display hexadecimal values as "FF" instead of "ff".
-    int             OptMidColsCount;                            // = 8      // set to 0 to disable extra spacing between every mid-cols.
-    int             OptAddrDigitsCount;                         // = 0      // number of addr digits to display (default calculated based on maximum displayed addr).
-    float           OptFooterExtraHeight;                       // = 0      // space to reserve at the bottom of the widget to add custom widgets
-    ImU32           HighlightColor;                             //          // background color of highlighted bytes.
-    ImU8            (*ReadFn)(const ImU8* data, size_t off);    // = 0      // optional handler to read bytes.
-    void            (*WriteFn)(ImU8* data, size_t off, ImU8 d); // = 0      // optional handler to write bytes.
-    bool            (*HighlightFn)(const ImU8* data, size_t off);//= 0      // optional handler to return Highlight property (to support non-contiguous highlighting).
+    bool            Open;                                                           // = true   // set to false when DrawWindow() was closed. ignore if not using DrawWindow().
+    bool            ReadOnly;                                                       // = false  // disable any editing.
+    int             Cols;                                                           // = 16     // number of columns to display.
+    bool            OptShowOptions;                                                 // = true   // display options button/context menu. when disabled, options will be locked unless you provide your own UI for them.
+    bool            OptShowDataPreview;                                             // = false  // display a footer previewing the decimal/binary/hex/float representation of the currently selected bytes.
+    bool            OptShowHexII;                                                   // = false  // display values in HexII representation instead of regular hexadecimal: hide null/zero bytes, ascii values as ".X".
+    bool            OptShowAscii;                                                   // = true   // display ASCII representation on the right side.
+    bool            OptGreyOutZeroes;                                               // = true   // display null/zero bytes using the TextDisabled color.
+    bool            OptUpperCaseHex;                                                // = true   // display hexadecimal values as "FF" instead of "ff".
+    int             OptMidColsCount;                                                // = 8      // set to 0 to disable extra spacing between every mid-cols.
+    int             OptAddrDigitsCount;                                             // = 0      // number of addr digits to display (default calculated based on maximum displayed addr).
+    float           OptFooterExtraHeight;                                           // = 0      // space to reserve at the bottom of the widget to add custom widgets
+    ImU32           HighlightColor;                                                 //          // background color of highlighted bytes.
+    ImU8            (*ReadFn)(const ImU8* data, size_t off, void* user_data);       // = 0      // optional handler to read bytes.
+    void            (*WriteFn)(ImU8* data, size_t off, ImU8 d, void* user_data);    // = 0      // optional handler to write bytes.
+    bool            (*HighlightFn)(const ImU8* data, size_t off, void* user_data);  // = 0      // optional handler to return Highlight property (to support non-contiguous highlighting).
+    void*           FnUserData;                                                     // = NULL   // optional data passed to callbacks
 
     // [Internal State]
     bool            ContentsWidthChanged;
@@ -287,13 +288,13 @@ struct MemoryEditor
 
                     // Draw highlight
                     bool is_highlight_from_user_range = (addr >= HighlightMin && addr < HighlightMax);
-                    bool is_highlight_from_user_func = (HighlightFn && HighlightFn(mem_data, addr));
+                    bool is_highlight_from_user_func = (HighlightFn && HighlightFn(mem_data, addr, FnUserData));
                     bool is_highlight_from_preview = (addr >= DataPreviewAddr && addr < DataPreviewAddr + preview_data_type_size);
                     if (is_highlight_from_user_range || is_highlight_from_user_func || is_highlight_from_preview)
                     {
                         ImVec2 pos = ImGui::GetCursorScreenPos();
                         float highlight_width = s.GlyphWidth * 2;
-                        bool is_next_byte_highlighted = (addr + 1 < mem_size) && ((HighlightMax != (size_t)-1 && addr + 1 < HighlightMax) || (HighlightFn && HighlightFn(mem_data, addr + 1)));
+                        bool is_next_byte_highlighted = (addr + 1 < mem_size) && ((HighlightMax != (size_t)-1 && addr + 1 < HighlightMax) || (HighlightFn && HighlightFn(mem_data, addr + 1, FnUserData)));
                         if (is_next_byte_highlighted || (n + 1 == Cols))
                         {
                             highlight_width = s.HexCellWidth;
@@ -312,7 +313,7 @@ struct MemoryEditor
                         {
                             ImGui::SetKeyboardFocusHere(0);
                             ImSnprintf(AddrInputBuf, 32, format_data, s.AddrDigitsCount, base_display_addr + addr);
-                            ImSnprintf(DataInputBuf, 32, format_byte, ReadFn ? ReadFn(mem_data, addr) : mem_data[addr]);
+                            ImSnprintf(DataInputBuf, 32, format_byte, ReadFn ? ReadFn(mem_data, addr, FnUserData) : mem_data[addr]);
                         }
                         struct UserData
                         {
@@ -339,7 +340,7 @@ struct MemoryEditor
                         };
                         UserData user_data;
                         user_data.CursorPos = -1;
-                        ImSnprintf(user_data.CurrentBufOverwrite, 3, format_byte, ReadFn ? ReadFn(mem_data, addr) : mem_data[addr]);
+                        ImSnprintf(user_data.CurrentBufOverwrite, 3, format_byte, ReadFn ? ReadFn(mem_data, addr, FnUserData) : mem_data[addr]);
                         ImGuiInputTextFlags flags = ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll | ImGuiInputTextFlags_NoHorizontalScroll | ImGuiInputTextFlags_CallbackAlways;
                         flags |= ImGuiInputTextFlags_AlwaysOverwrite; // was ImGuiInputTextFlags_AlwaysInsertMode
                         ImGui::SetNextItemWidth(s.GlyphWidth * 2);
@@ -356,7 +357,7 @@ struct MemoryEditor
                         if (data_write && sscanf(DataInputBuf, "%X", &data_input_value) == 1)
                         {
                             if (WriteFn)
-                                WriteFn(mem_data, addr, (ImU8)data_input_value);
+                                WriteFn(mem_data, addr, (ImU8)data_input_value, FnUserData);
                             else
                                 mem_data[addr] = (ImU8)data_input_value;
                         }
@@ -365,7 +366,7 @@ struct MemoryEditor
                     else
                     {
                         // NB: The trailing space is not visible but ensure there's no gap that the mouse cannot click on.
-                        ImU8 b = ReadFn ? ReadFn(mem_data, addr) : mem_data[addr];
+                        ImU8 b = ReadFn ? ReadFn(mem_data, addr, FnUserData) : mem_data[addr];
 
                         if (OptShowHexII)
                         {
@@ -413,7 +414,7 @@ struct MemoryEditor
                             draw_list->AddRectFilled(pos, ImVec2(pos.x + s.GlyphWidth, pos.y + s.LineHeight), ImGui::GetColorU32(ImGuiCol_FrameBg));
                             draw_list->AddRectFilled(pos, ImVec2(pos.x + s.GlyphWidth, pos.y + s.LineHeight), ImGui::GetColorU32(ImGuiCol_TextSelectedBg));
                         }
-                        unsigned char c = ReadFn ? ReadFn(mem_data, addr) : mem_data[addr];
+                        unsigned char c = ReadFn ? ReadFn(mem_data, addr, FnUserData) : mem_data[addr];
                         char display_c = (c < 32 || c >= 128) ? '.' : c;
                         draw_list->AddText(pos, (display_c == c) ? color_text : color_disabled, &display_c, &display_c + 1);
                         pos.x += s.GlyphWidth;
@@ -641,7 +642,7 @@ struct MemoryEditor
         size_t size = addr + elem_size > mem_size ? mem_size - addr : elem_size;
         if (ReadFn)
             for (int i = 0, n = (int)size; i < n; ++i)
-                buf[i] = ReadFn(mem_data, addr + i);
+                buf[i] = ReadFn(mem_data, addr + i, FnUserData);
         else
             memcpy(buf, mem_data + addr, size);
 
